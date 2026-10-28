@@ -1,0 +1,89 @@
+# RV32I CPU: simulation, tests and software.
+#
+#   make              build both simulators (pipelined and single-cycle)
+#   make test         run the rv32ui compliance suite on both cores (golden-model checked)
+#   make run PROG=hello CORE=pipe   build and run sw/programs/hello on a core
+#   make unit         RTL unit tests (ALU, register file, immediate generator, hazard unit)
+
+RISCV_PREFIX ?= riscv64-unknown-elf-
+CC      := $(RISCV_PREFIX)gcc
+OBJDUMP := $(RISCV_PREFIX)objdump
+ARCH    := -march=rv32i -mabi=ilp32
+BUILD   := build
+
+RTL := rtl/rv32i_pkg.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/lsu.sv \
+       rtl/decoder.sv rtl/hazard_unit.sv rtl/core_single.sv rtl/core_pipe.sv rtl/soc.sv
+TB  := tb/tb_soc.cpp sim/iss.cpp
+
+VERILATOR       ?= verilator
+VERILATOR_FLAGS := --cc --exe --build -j 0 -O3 --x-assign fast --x-initial fast --trace \
+                   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM --top-module soc -CFLAGS "-O2 -I$(CURDIR)/sim"
+
+.PHONY: all sims test run unit clean
+.PRECIOUS: $(BUILD)/%.elf $(BUILD)/tests/%.elf $(BUILD)/hazards/%.elf $(BUILD)/programs/%.elf
+all: sims
+sims: $(BUILD)/pipe/Vsoc $(BUILD)/single/Vsoc $(BUILD)/rv32sim
+
+# Standalone golden model (also validated on its own against the riscv-tests).
+$(BUILD)/rv32sim: sim/rv32sim.cpp sim/iss.cpp sim/iss.h
+	@mkdir -p $(BUILD)
+	$(CXX) -O2 -std=c++17 -Wall -Wextra -o $@ sim/rv32sim.cpp sim/iss.cpp
+
+$(BUILD)/pipe/Vsoc: $(RTL) $(TB)
+	@mkdir -p $(BUILD)/pipe
+	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=1 --Mdir $(BUILD)/pipe $(RTL) $(abspath $(TB)) >/dev/null
+
+$(BUILD)/single/Vsoc: $(RTL) $(TB)
+	@mkdir -p $(BUILD)/single
+	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=0 --Mdir $(BUILD)/single $(RTL) $(abspath $(TB)) >/dev/null
+
+# ---- rv32ui compliance tests ----
+# fence_i needs self-modifying code (impossible with separate instruction ROM) and ma_data
+# needs a trap handler (CSRs are out of scope); every other rv32ui test is run.
+RV_TEST_DIR := third_party/riscv-tests/isa/rv32ui
+RV_TESTS    := $(filter-out fence_i ma_data,$(basename $(notdir $(wildcard $(RV_TEST_DIR)/*.S))))
+TEST_HEX    := $(addprefix $(BUILD)/tests/,$(addsuffix .imem.hex,$(RV_TESTS)))
+
+$(BUILD)/tests/%.elf: $(RV_TEST_DIR)/%.S sw/tests/env/riscv_test.h sw/common/link.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(ARCH) -static -nostdlib -nostartfiles -T sw/common/link.ld \
+	  -I sw/tests/env -I third_party/riscv-tests/isa/macros/scalar $< -o $@
+
+$(BUILD)/%.imem.hex: $(BUILD)/%.elf scripts/elf2hex.py
+	python3 scripts/elf2hex.py $< $(BUILD)/$*
+	$(OBJDUMP) -d $< > $(BUILD)/$*.dis
+
+test: sims $(TEST_HEX) hazards
+	python3 scripts/run_tests.py --build $(BUILD) $(RV_TESTS)
+
+# ---- directed hazard tests (same protocol as rv32ui) ----
+HAZARD_TESTS := $(basename $(notdir $(wildcard sw/tests/hazards/*.S)))
+HAZARD_HEX   := $(addprefix $(BUILD)/hazards/,$(addsuffix .imem.hex,$(HAZARD_TESTS)))
+
+$(BUILD)/hazards/%.elf: sw/tests/hazards/%.S sw/tests/env/riscv_test.h sw/common/link.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(ARCH) -static -nostdlib -nostartfiles -T sw/common/link.ld -I sw/tests/env $< -o $@
+
+.PHONY: hazards
+hazards: sims $(HAZARD_HEX)
+	python3 scripts/run_tests.py --build $(BUILD) --dir hazards $(HAZARD_TESTS)
+
+# ---- C programs ----
+PROG ?= hello
+CORE ?= pipe
+CFLAGS_SW := $(ARCH) -O2 -ffreestanding -fno-builtin -nostdlib -nostartfiles -static -Wall \
+             -T sw/common/link.ld -I sw/common
+SW_COMMON := sw/common/crt0.S sw/common/lib.c
+
+$(BUILD)/programs/%.elf: sw/programs/%.c $(SW_COMMON) sw/common/lib.h sw/common/link.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_SW) $(SW_COMMON) $< -o $@ -lgcc
+
+run: $(BUILD)/$(CORE)/Vsoc $(BUILD)/programs/$(PROG).imem.hex
+	$(BUILD)/$(CORE)/Vsoc --imem $(BUILD)/programs/$(PROG).imem.hex --dmem $(BUILD)/programs/$(PROG).dmem.hex
+
+unit:
+	python3 scripts/run_unit_tests.py
+
+clean:
+	rm -rf $(BUILD)

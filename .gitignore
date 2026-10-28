@@ -1,0 +1,6 @@
+build/
+obj_dir/
+*.vcd
+__pycache__/
+.DS_Store
+.vscode/
