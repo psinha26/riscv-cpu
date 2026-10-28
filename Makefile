@@ -79,11 +79,28 @@ $(BUILD)/programs/%.elf: sw/programs/%.c $(SW_COMMON) sw/common/lib.h sw/common/
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_SW) $(SW_COMMON) $< -o $@ -lgcc
 
+# CoreMark: upstream sources untouched (third_party/coremark), port in sw/coremark.
+CM_ITERATIONS ?= 10
+CM_SRC := $(addprefix third_party/coremark/,core_list_join.c core_main.c core_matrix.c core_state.c core_util.c) \
+          sw/coremark/core_portme.c
+$(BUILD)/programs/coremark.elf: $(CM_SRC) sw/coremark/core_portme.h $(SW_COMMON) sw/common/lib.h sw/common/link.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_SW) -I sw/coremark -I third_party/coremark -DPERFORMANCE_RUN=1 -DITERATIONS=$(CM_ITERATIONS) \
+	  -DCOMPILER_FLAGS='"-O2 -march=rv32i -mabi=ilp32"' $(SW_COMMON) $(CM_SRC) -o $@ -lgcc
+
 run: $(BUILD)/$(CORE)/Vsoc $(BUILD)/programs/$(PROG).imem.hex
 	$(BUILD)/$(CORE)/Vsoc --imem $(BUILD)/programs/$(PROG).imem.hex --dmem $(BUILD)/programs/$(PROG).dmem.hex
 
-unit:
-	python3 scripts/run_unit_tests.py
+UNIT_RTL := rtl/rv32i_pkg.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/hazard_unit.sv \
+            tb/unit/unit_top.sv
+
+$(BUILD)/unit/Vunit_top: $(UNIT_RTL) tb/unit/unit_tests.cpp
+	@mkdir -p $(BUILD)/unit
+	$(VERILATOR) --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM --top-module unit_top \
+	  --Mdir $(BUILD)/unit $(UNIT_RTL) $(abspath tb/unit/unit_tests.cpp) >/dev/null
+
+unit: $(BUILD)/unit/Vunit_top
+	$(BUILD)/unit/Vunit_top
 
 clean:
 	rm -rf $(BUILD)
