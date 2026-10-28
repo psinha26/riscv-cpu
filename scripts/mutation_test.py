@@ -24,9 +24,9 @@ MUTATIONS = [
     ("no EX/MEM -> EX forwarding", "hazard_unit.sv", r"fwd_sel = 2'd1;", "fwd_sel = 2'd0;"),
     ("no MEM/WB -> EX forwarding", "hazard_unit.sv", r"fwd_sel = 2'd2;", "fwd_sel = 2'd0;"),
     ("forwarding priority reversed", "hazard_unit.sv",
-     r"if \(mem_valid && mem_reg_we && mem_rd != 5'd0 && mem_rd == rs\)",
-     "if (mem_valid && mem_reg_we && mem_rd != 5'd0 && mem_rd == rs && !(wb_valid && wb_reg_we && wb_rd == rs))"),
-    ("forward from x0", "hazard_unit.sv", r"mem_rd != 5'd0 && ", ""),
+     r"if \(ex_valid && ex_reg_we && ex_rd != 5'd0 && ex_rd == rs\)",
+     "if (ex_valid && ex_reg_we && ex_rd != 5'd0 && ex_rd == rs && !(mem_valid && mem_reg_we && mem_rd == rs))"),
+    ("forward from x0", "hazard_unit.sv", r"ex_rd != 5'd0 && ", ""),
     ("no load-use stall", "hazard_unit.sv", r"assign load_use = ex_valid", "assign load_use = 1'b0 && ex_valid"),
     ("load-use ignores rs2", "hazard_unit.sv", r"\|\| \(id_uses_rs2 && id_rs2 == ex_rd\)", ""),
     ("no flush of ID on taken branch", "hazard_unit.sv", r"assign flush_id  = kill;", "assign flush_id  = ex_trap;"),
@@ -36,19 +36,21 @@ MUTATIONS = [
     ("store data not forwarded", "core_pipe.sv", r"mem_store  <= rs2_fwd;", "mem_store  <= ex_rs2_val;"),
     ("JALR does not clear bit 0", "core_pipe.sv", r"\{alu_y\[31:1\], 1'b0\}", "alu_y"),
     ("SRA behaves as SRL", "alu.sv", r"ALU_SRA:  y = \$unsigned\(\$signed\(a\) >>> shamt\);", "ALU_SRA:  y = a >> shamt;"),
-    ("SLT compares unsigned", "alu.sv", r"\{31'b0, \$signed\(a\) < \$signed\(b\)\}", "{31'b0, a < b}"),
+    ("SLT compares unsigned", "alu.sv", r"ALU_SLT:  y = \{31'b0, lt_s\};", "ALU_SLT:  y = {31'b0, lt_u};"),
+    ("adder drops a carry (bit 16)", "prefix_adder.sv", r"assign carry = \{g\[LEVELS\*W \+: W-1\], cin\};",
+     "assign carry = {g[LEVELS*W+16 +: W-17], 1'b0, g[LEVELS*W +: 15], cin};"),
     ("LB zero-extends", "lsu.sv", r"\{\{24\{shifted\[7\]\}\}, shifted\[7:0\]\};    // LB", "{24'b0, shifted[7:0]};    // LB"),
     ("SH writes the wrong lanes", "lsu.sv", r"wstrb = off\[1\] \? 4'b1100 : 4'b0011;", "wstrb = 4'b0011;"),
     ("B-immediate bit 11 dropped", "imm_gen.sv", r"insn\[31\], insn\[7\], insn\[30:25\]", "insn[31], 1'b0, insn[30:25]"),
-    ("BGEU acts as BGE", "branch_unit.sv", r"3'b111:  taken = \(a >= b\);", "3'b111:  taken = ($signed(a) >= $signed(b));"),
+    ("BGEU acts as BGE", "branch_unit.sv", r"3'b111:  taken = !lt_u;", "3'b111:  taken = !lt_s;"),
 ]
 
 
 def build(rtl_dir: Path, out: Path):
-    files = [rtl_dir / f for f in ["rv32i_pkg.sv", "alu.sv", "imm_gen.sv", "branch_unit.sv", "regfile.sv", "lsu.sv",
+    files = [rtl_dir / f for f in ["prefix_adder.sv", "branch_predictor.sv", "alu.sv", "imm_gen.sv", "branch_unit.sv", "regfile.sv", "lsu.sv",
                                     "decoder.sv", "hazard_unit.sv", "core_single.sv", "core_pipe.sv", "soc.sv"]]
     cmd = ["verilator", "--cc", "--exe", "--build", "-j", "0", "-O1", "--x-assign", "fast", "--x-initial", "fast",
-           "--trace", "-Wno-fatal", "-Wno-lint", "-Wno-style", "--top-module", "soc", "-GPIPELINED=1",
+           "--trace", "-Wno-fatal", "-Wno-lint", "-Wno-style", f"-I{rtl_dir}", "--top-module", "soc", "-GPIPELINED=1",
            "-CFLAGS", f"-I{ROOT / 'sim'}", "--Mdir", str(out), *map(str, files),
            str(ROOT / "tb/tb_soc.cpp"), str(ROOT / "sim/iss.cpp")]
     r = subprocess.run(cmd, capture_output=True, text=True)

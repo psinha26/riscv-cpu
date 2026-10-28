@@ -2,7 +2,6 @@
 // Produces every control signal the datapath needs; anything outside RV32I (CSR instructions,
 // FENCE.I, malformed encodings) is flagged illegal and halts the core.
 module decoder
-  import rv32i_pkg::*;
 (
   input  logic [31:0] insn,
   output logic [4:0]  rs1,
@@ -25,6 +24,8 @@ module decoder
   output logic        is_halt,     // ECALL or EBREAK
   output logic        illegal
 );
+  `include "rv32i_defs.svh"
+
   logic [6:0] opcode, funct7;
   logic [2:0] funct3;
   assign opcode = insn[6:0];

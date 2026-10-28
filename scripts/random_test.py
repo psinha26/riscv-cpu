@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CC = "riscv64-unknown-elf-gcc"
 
 BASE = "s0"  # x8 points at the data buffer and is never overwritten
+LOOP = "s1"  # x9 is the loop counter of counted loops, never a random destination
 DESTS = ["zero", "ra", "t0", "t1", "t2", "a0", "a1", "a2", "a3", "a4", "a5"]
 SRCS = DESTS[1:] + ["zero", BASE]
 R_OPS = ["add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra", "or", "and"]
@@ -54,11 +55,26 @@ def gen_program(rng: random.Random, length: int) -> str:
     lines.append(f"  la {BASE}, buf")
 
     pending = []  # labels to place a few instructions later (forward branch targets)
+    loop_end = None  # (instruction index, label) closing the counted loop we're in
     i = 0
     while i < length:
+        if loop_end and loop_end[0] <= i:
+            lines += [f"  addi {LOOP}, {LOOP}, -1", f"  bnez {LOOP}, {loop_end[1]}"]
+            loop_end = None
+        # Counted loops: backward branches taken several times, then not taken, so the branch
+        # predictor trains, predicts correctly, and mispredicts on exit. Forward branches
+        # inside never jump past the loop end (their targets are placed within 4 instructions,
+        # and the loop is closed only after pending labels inside it are emitted).
+        if loop_end is None and not pending and rng.random() < 0.04:
+            label += 1
+            name = f"LOOP{label}"
+            lines += [f"  li {LOOP}, {rng.randint(2, 6)}", f"{name}:"]
+            loop_end = (i + rng.randint(4, 12), name)
         for p in [p for p in pending if p[0] <= i]:
             lines.append(f"{p[1]}:")
             pending.remove(p)
+        if loop_end and pending and loop_end[0] <= i + 1:
+            loop_end = (max(p[0] for p in pending) + 1, loop_end[1])  # keep targets inside
         k = rng.random()
         if k < 0.30:
             lines.append(f"  {rng.choice(R_OPS)} {dst()}, {src()}, {src()}")
@@ -95,6 +111,8 @@ def gen_program(rng: random.Random, length: int) -> str:
         i += 1
     for _, name in pending:
         lines.append(f"{name}:")
+    if loop_end:
+        lines += [f"  addi {LOOP}, {LOOP}, -1", f"  bnez {LOOP}, {loop_end[1]}"]
     lines += ["  li a0, 0", "  ecall"]
 
     data = [f"  .word {rng.getrandbits(32)}" for _ in range(BUF // 4)]
@@ -107,7 +125,7 @@ def main():
     ap.add_argument("--count", type=int, default=200)
     ap.add_argument("--length", type=int, default=400)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--cores", default="pipe,single")
+    ap.add_argument("--cores", default="pipe_bp,pipe,single")
     ap.add_argument("--keep", help="directory to keep the generated programs in")
     a = ap.parse_args()
 

@@ -11,29 +11,35 @@ OBJDUMP := $(RISCV_PREFIX)objdump
 ARCH    := -march=rv32i -mabi=ilp32
 BUILD   := build
 
-RTL := rtl/rv32i_pkg.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/lsu.sv \
+RTL := rtl/prefix_adder.sv rtl/branch_predictor.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/lsu.sv \
        rtl/decoder.sv rtl/hazard_unit.sv rtl/core_single.sv rtl/core_pipe.sv rtl/soc.sv
 TB  := tb/tb_soc.cpp sim/iss.cpp
 
 VERILATOR       ?= verilator
 VERILATOR_FLAGS := --cc --exe --build -j 0 -O3 --x-assign fast --x-initial fast --trace \
-                   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM --top-module soc -CFLAGS "-O2 -I$(CURDIR)/sim"
+                   -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Irtl --top-module soc -CFLAGS "-O2 -I$(CURDIR)/sim"
 
 .PHONY: all sims test run unit clean
 .PRECIOUS: $(BUILD)/%.elf $(BUILD)/tests/%.elf $(BUILD)/hazards/%.elf $(BUILD)/programs/%.elf
 all: sims
-sims: $(BUILD)/pipe/Vsoc $(BUILD)/single/Vsoc $(BUILD)/rv32sim
+# Three simulators: single-cycle, pipelined with static not-taken prediction, pipelined + BTB.
+BP_ENTRIES ?= 64
+sims: $(BUILD)/pipe/Vsoc $(BUILD)/single/Vsoc $(BUILD)/pipe_bp/Vsoc $(BUILD)/rv32sim
 
 # Standalone golden model (also validated on its own against the riscv-tests).
 $(BUILD)/rv32sim: sim/rv32sim.cpp sim/iss.cpp sim/iss.h
 	@mkdir -p $(BUILD)
 	$(CXX) -O2 -std=c++17 -Wall -Wextra -o $@ sim/rv32sim.cpp sim/iss.cpp
 
-$(BUILD)/pipe/Vsoc: $(RTL) $(TB)
+$(BUILD)/pipe/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
 	@mkdir -p $(BUILD)/pipe
 	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=1 --Mdir $(BUILD)/pipe $(RTL) $(abspath $(TB)) >/dev/null
 
-$(BUILD)/single/Vsoc: $(RTL) $(TB)
+$(BUILD)/pipe_bp/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
+	@mkdir -p $(BUILD)/pipe_bp
+	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=1 -GBP_ENTRIES=$(BP_ENTRIES) --Mdir $(BUILD)/pipe_bp $(RTL) $(abspath $(TB)) >/dev/null
+
+$(BUILD)/single/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
 	@mkdir -p $(BUILD)/single
 	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=0 --Mdir $(BUILD)/single $(RTL) $(abspath $(TB)) >/dev/null
 
@@ -54,7 +60,7 @@ $(BUILD)/%.imem.hex: $(BUILD)/%.elf scripts/elf2hex.py
 	$(OBJDUMP) -d $< > $(BUILD)/$*.dis
 
 test: sims $(TEST_HEX) hazards
-	python3 scripts/run_tests.py --build $(BUILD) $(RV_TESTS)
+	python3 scripts/run_tests.py --build $(BUILD) --cores single,pipe,pipe_bp $(RV_TESTS)
 
 # ---- directed hazard tests (same protocol as rv32ui) ----
 HAZARD_TESTS := $(basename $(notdir $(wildcard sw/tests/hazards/*.S)))
@@ -66,7 +72,7 @@ $(BUILD)/hazards/%.elf: sw/tests/hazards/%.S sw/tests/env/riscv_test.h sw/common
 
 .PHONY: hazards
 hazards: sims $(HAZARD_HEX)
-	python3 scripts/run_tests.py --build $(BUILD) --dir hazards $(HAZARD_TESTS)
+	python3 scripts/run_tests.py --build $(BUILD) --cores single,pipe,pipe_bp --dir hazards $(HAZARD_TESTS)
 
 # ---- C programs ----
 PROG ?= hello
@@ -91,12 +97,12 @@ $(BUILD)/programs/coremark.elf: $(CM_SRC) sw/coremark/core_portme.h $(SW_COMMON)
 run: $(BUILD)/$(CORE)/Vsoc $(BUILD)/programs/$(PROG).imem.hex
 	$(BUILD)/$(CORE)/Vsoc --imem $(BUILD)/programs/$(PROG).imem.hex --dmem $(BUILD)/programs/$(PROG).dmem.hex
 
-UNIT_RTL := rtl/rv32i_pkg.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/hazard_unit.sv \
+UNIT_RTL := rtl/prefix_adder.sv rtl/branch_predictor.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/hazard_unit.sv \
             tb/unit/unit_top.sv
 
 $(BUILD)/unit/Vunit_top: $(UNIT_RTL) tb/unit/unit_tests.cpp
 	@mkdir -p $(BUILD)/unit
-	$(VERILATOR) --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM --top-module unit_top \
+	$(VERILATOR) --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Irtl --top-module unit_top \
 	  --Mdir $(BUILD)/unit $(UNIT_RTL) $(abspath tb/unit/unit_tests.cpp) >/dev/null
 
 unit: $(BUILD)/unit/Vunit_top

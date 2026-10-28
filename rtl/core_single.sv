@@ -6,7 +6,6 @@
 // Memory ports are asynchronous-read / synchronous-write. The rvfi_* outputs describe the
 // instruction retiring this cycle (pc, result, store) for the testbench's golden-model check.
 module core_single
-  import rv32i_pkg::*;
 #(
   parameter logic [31:0] RESET_PC = 32'h0000_0000
 ) (
@@ -36,8 +35,11 @@ module core_single
   output logic [31:0] rvfi_mem_wdata,
 
   output logic        perf_stall,
-  output logic        perf_flush
+  output logic        perf_flush,
+  output logic        perf_branch
 );
+  `include "rv32i_defs.svh"
+
   logic [31:0] pc, insn;
   assign imem_addr = pc;
   assign insn      = imem_rdata;
@@ -80,10 +82,11 @@ module core_single
   logic br_taken;
   branch_unit u_br (.funct3(insn[14:12]), .a(rs1_val), .b(rs2_val), .taken(br_taken));
 
-  logic [31:0] pc_plus4, target;
-  logic        redirect;
+  logic [31:0] pc_plus4, target, pc_imm;
+  logic        redirect, unused_tgt_cout;
   assign pc_plus4 = pc + 32'd4;
-  assign target   = is_jalr ? {alu_y[31:1], 1'b0} : pc + imm;  // JALR: (rs1 + imm) & ~1
+  prefix_adder #(.W(32)) u_tgt (.a(pc), .b(imm), .cin(1'b0), .sum(pc_imm), .cout(unused_tgt_cout));
+  assign target   = is_jalr ? {alu_y[31:1], 1'b0} : pc_imm;  // JALR: (rs1 + imm) & ~1
   assign redirect = is_jal || is_jalr || (is_branch && br_taken);
 
   // ---- memory ----
@@ -145,8 +148,9 @@ module core_single
   assign rvfi_mem_wstrb = dmem_wstrb;
   assign rvfi_mem_wdata = st_data;
 
-  assign perf_stall = 1'b0;  // no hazards in a single-cycle design
-  assign perf_flush = 1'b0;
+  assign perf_stall  = 1'b0;  // no hazards in a single-cycle design
+  assign perf_flush  = 1'b0;
+  assign perf_branch = active && trap == TRAP_NONE && (is_branch || is_jal || is_jalr);
 
   logic unused;
   assign unused = ^{uses_rs1, uses_rs2};

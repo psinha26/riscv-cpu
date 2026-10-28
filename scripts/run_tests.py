@@ -35,9 +35,9 @@ def main():
                 print(f"FAIL {core:6} {t}\n{r.stderr.strip()}\n")
 
     width = max(len(t) for t in a.tests)
-    print(f"{'test':{width}}  " + "  ".join(f"{c:6}" for c in cores))
+    print(f"{'test':{width}}  " + "  ".join(f"{c:7}" for c in cores))
     for t in a.tests:
-        print(f"{t:{width}}  " + "  ".join(f"{'pass' if results[c][t] else 'FAIL':6}" for c in cores))
+        print(f"{t:{width}}  " + "  ".join(f"{'pass' if results[c][t] else 'FAIL':7}" for c in cores))
     for c in cores:
         n = sum(results[c].values())
         print(f"{c}: {n}/{len(a.tests)} {'rv32ui' if a.dir == 'tests' else a.dir} tests pass (golden-model checked)")

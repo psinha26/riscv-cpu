@@ -1,7 +1,6 @@
 // Wrapper exposing the datapath building blocks side by side for unit testing
 // (tb/unit/unit_tests.cpp drives every port and checks against C++ reference functions).
 module unit_top
-  import rv32i_pkg::*;
 (
   input  logic        clk,
   // ALU
@@ -31,18 +30,14 @@ module unit_top
   input  logic        hz_id_uses_rs1,
   input  logic        hz_id_uses_rs2,
   input  logic        hz_ex_valid,
-  input  logic [4:0]  hz_ex_rs1,
-  input  logic [4:0]  hz_ex_rs2,
   input  logic [4:0]  hz_ex_rd,
+  input  logic        hz_ex_reg_we,
   input  logic        hz_ex_mem_re,
   input  logic        hz_ex_redirect,
   input  logic        hz_ex_trap,
   input  logic        hz_mem_valid,
   input  logic [4:0]  hz_mem_rd,
   input  logic        hz_mem_reg_we,
-  input  logic        hz_wb_valid,
-  input  logic [4:0]  hz_wb_rd,
-  input  logic        hz_wb_reg_we,
   output logic [1:0]  hz_fwd_a,
   output logic [1:0]  hz_fwd_b,
   output logic        hz_stall,
@@ -59,10 +54,9 @@ module unit_top
   );
   hazard_unit u_hz (
     .id_valid(hz_id_valid), .id_rs1(hz_id_rs1), .id_rs2(hz_id_rs2), .id_uses_rs1(hz_id_uses_rs1),
-    .id_uses_rs2(hz_id_uses_rs2), .ex_valid(hz_ex_valid), .ex_rs1(hz_ex_rs1), .ex_rs2(hz_ex_rs2),
-    .ex_rd(hz_ex_rd), .ex_mem_re(hz_ex_mem_re), .ex_redirect(hz_ex_redirect), .ex_trap(hz_ex_trap),
-    .mem_valid(hz_mem_valid), .mem_rd(hz_mem_rd), .mem_reg_we(hz_mem_reg_we), .wb_valid(hz_wb_valid),
-    .wb_rd(hz_wb_rd), .wb_reg_we(hz_wb_reg_we), .fwd_a(hz_fwd_a), .fwd_b(hz_fwd_b), .stall(hz_stall),
+    .id_uses_rs2(hz_id_uses_rs2), .ex_valid(hz_ex_valid), .ex_rd(hz_ex_rd), .ex_reg_we(hz_ex_reg_we),
+    .ex_mem_re(hz_ex_mem_re), .ex_redirect(hz_ex_redirect), .ex_trap(hz_ex_trap),
+    .mem_valid(hz_mem_valid), .mem_rd(hz_mem_rd), .mem_reg_we(hz_mem_reg_we), .fwd_a(hz_fwd_a), .fwd_b(hz_fwd_b), .stall(hz_stall),
     .bubble_ex(hz_bubble_ex), .flush_id(hz_flush_id), .load_use(hz_load_use)
   );
 endmodule

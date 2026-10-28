@@ -1,11 +1,12 @@
 // Immediate generator: sign-extended immediate for each RV32I instruction format.
 module imm_gen
-  import rv32i_pkg::*;
 (
   input  logic [31:0] insn,
   input  logic [2:0]  fmt,
   output logic [31:0] imm
 );
+  `include "rv32i_defs.svh"
+
   always_comb begin
     unique case (fmt)
       IMM_I:   imm = {{20{insn[31]}}, insn[31:20]};

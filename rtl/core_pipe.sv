@@ -1,17 +1,19 @@
 // 5-stage pipelined RV32I core: IF -> ID -> EX -> MEM -> WB.
 //
-//   IF   fetch at PC; next PC = PC + 4 (predict not-taken)
+//   IF   fetch at PC; next PC from the branch predictor (BTB hit predicted taken) or PC + 4
 //   ID   decode, read registers (with WB->ID bypass), generate the immediate
 //   EX   forwarding muxes, ALU, branch compare, jump target; redirect or trap here
 //   MEM  load/store through the data port (byte enables, sign extension), MMIO
 //   WB   write the register file; report the retired instruction on rvfi_*
 //
 // Hazards are handled by hazard_unit (forwarding, one-cycle load-use stall, two-instruction
-// flush on taken branches and jumps). Same ports as core_single.
+// flush on a mispredicted branch or jump). With BP_ENTRIES = 0 every branch is predicted
+// not-taken, so every taken branch/jump costs the 2-cycle flush; with a BTB only wrong
+// predictions do. Same ports as core_single.
 module core_pipe
-  import rv32i_pkg::*;
 #(
-  parameter logic [31:0] RESET_PC = 32'h0000_0000
+  parameter logic [31:0] RESET_PC   = 32'h0000_0000,
+  parameter int          BP_ENTRIES = 0   // branch target buffer size; 0 = static not-taken
 ) (
   input  logic        clk,
   input  logic        rst,
@@ -39,38 +41,55 @@ module core_pipe
   output logic [31:0] rvfi_mem_wdata,
 
   output logic        perf_stall,   // a load-use bubble was inserted this cycle
-  output logic        perf_flush    // a taken branch/jump flushed two instructions this cycle
+  output logic        perf_flush,   // a mispredicted branch/jump flushed two instructions
+  output logic        perf_branch   // a branch or jump resolved in EX this cycle
 );
+  `include "rv32i_defs.svh"
+
   // Hazard control (driven by hazard_unit below).
   logic stall, bubble_ex, flush_id, load_use;
   logic ex_redirect, ex_trap_any;
-  logic [31:0] ex_target;
+  logic [31:0] ex_target, ex_redirect_pc;
   logic fetch_stop;  // a trap is in flight: stop fetching new instructions
 
   // =========================================================================================
   // IF
   // =========================================================================================
-  logic [31:0] pc;
+  logic [31:0] pc, if_pred_target;
+  logic        if_pred_taken;
   assign imem_addr = pc;
+
+  // Branch predictor: looked up with the fetch PC, trained by branches/jumps resolving in EX.
+  logic        bp_upd, ex_jump;
+  logic        ex_is_jal, ex_is_jalr, ex_is_branch, ex_valid;
+  logic [31:0] ex_pc;
+  branch_predictor #(.ENTRIES(BP_ENTRIES)) u_bp (
+    .clk, .rst, .if_pc(pc), .pred_taken(if_pred_taken), .pred_target(if_pred_target),
+    .upd_valid(bp_upd), .upd_pc(ex_pc), .upd_taken(ex_jump), .upd_uncond(ex_is_jal || ex_is_jalr),
+    .upd_target(ex_target)
+  );
 
   always_ff @(posedge clk) begin
     if (rst)                         pc <= RESET_PC;
-    else if (ex_redirect)            pc <= ex_target;
-    else if (!stall && !fetch_stop && !ex_trap_any) pc <= pc + 32'd4;
+    else if (ex_redirect)            pc <= ex_redirect_pc;
+    else if (!stall && !fetch_stop && !ex_trap_any) pc <= if_pred_taken ? if_pred_target : pc + 32'd4;
   end
 
   // IF/ID
-  logic        id_valid;
-  logic [31:0] id_pc, id_insn;
+  logic        id_valid, id_pred_taken;
+  logic [31:0] id_pc, id_insn, id_pred_target;
   always_ff @(posedge clk) begin
     if (rst || flush_id || fetch_stop) begin
-      id_valid <= 1'b0;
-      id_insn  <= NOP;
-      id_pc    <= 32'b0;
+      id_valid      <= 1'b0;
+      id_insn       <= NOP;
+      id_pc         <= 32'b0;
+      id_pred_taken <= 1'b0;
     end else if (!stall) begin
-      id_valid <= 1'b1;
-      id_insn  <= imem_rdata;
-      id_pc    <= pc;
+      id_valid       <= 1'b1;
+      id_insn        <= imem_rdata;
+      id_pc          <= pc;
+      id_pred_taken  <= if_pred_taken;
+      id_pred_target <= if_pred_target;
     end
   end
 
@@ -102,17 +121,21 @@ module core_pipe
   );
 
   // ID/EX
-  logic        ex_valid, ex_reg_we, ex_b_imm, ex_mem_re, ex_mem_we;
-  logic        ex_is_branch, ex_is_jal, ex_is_jalr, ex_is_halt, ex_illegal;
-  logic [31:0] ex_pc, ex_insn, ex_imm, ex_rs1_val, ex_rs2_val;
+  logic        ex_reg_we, ex_b_imm, ex_mem_re, ex_mem_we;
+  logic        ex_is_halt, ex_illegal, ex_pred_taken;
+  logic [31:0] ex_insn, ex_imm, ex_rs1_val, ex_rs2_val, ex_pred_target;
   logic [4:0]  ex_rs1, ex_rs2, ex_rd;
   logic [3:0]  ex_alu_op;
   logic [1:0]  ex_a_sel, ex_wb_sel;
   logic [2:0]  ex_mem_funct3;
+  logic [1:0]  fwd_a_id, fwd_b_id, ex_fwd_a, ex_fwd_b;  // forwarding selects, decided in ID
 
   always_ff @(posedge clk) begin
     if (rst || bubble_ex) begin
       ex_valid     <= 1'b0;
+      ex_fwd_a     <= 2'd0;
+      ex_fwd_b     <= 2'd0;
+      ex_pred_taken <= 1'b0;
       ex_reg_we    <= 1'b0;
       ex_mem_re    <= 1'b0;
       ex_mem_we    <= 1'b0;
@@ -128,6 +151,10 @@ module core_pipe
       ex_insn      <= NOP;
     end else begin
       ex_valid      <= id_valid;
+      ex_fwd_a      <= fwd_a_id;
+      ex_fwd_b      <= fwd_b_id;
+      ex_pred_taken <= id_pred_taken;
+      ex_pred_target <= id_pred_target;
       ex_pc         <= id_pc;
       ex_insn       <= id_insn;
       ex_rs1        <= d_rs1;
@@ -155,19 +182,18 @@ module core_pipe
   // =========================================================================================
   // EX
   // =========================================================================================
-  logic [1:0]  fwd_a, fwd_b;
   logic        mem_valid, mem_reg_we;
   logic [4:0]  mem_rd;
-  logic [31:0] mem_fwd_val;  // result of the instruction in MEM, if it isn't a load
+  logic [31:0] mem_fwd_val;  // result of the instruction in MEM, if it isn't a load (registered)
 
   logic [31:0] rs1_fwd, rs2_fwd;
   always_comb begin
-    unique case (fwd_a)
+    unique case (ex_fwd_a)
       2'd1:    rs1_fwd = mem_fwd_val;
       2'd2:    rs1_fwd = wb_data;
       default: rs1_fwd = ex_rs1_val;
     endcase
-    unique case (fwd_b)
+    unique case (ex_fwd_b)
       2'd1:    rs2_fwd = mem_fwd_val;
       2'd2:    rs2_fwd = wb_data;
       default: rs2_fwd = ex_rs2_val;
@@ -188,11 +214,12 @@ module core_pipe
   logic br_taken;
   branch_unit u_br (.funct3(ex_insn[14:12]), .a(rs1_fwd), .b(rs2_fwd), .taken(br_taken));
 
-  logic        jump;
-  logic [31:0] ex_pc4;
+  logic [31:0] ex_pc4, ex_pc_imm;
+  logic        unused_tgt_cout;
   assign ex_pc4    = ex_pc + 32'd4;
-  assign ex_target = ex_is_jalr ? {alu_y[31:1], 1'b0} : ex_pc + ex_imm;
-  assign jump      = ex_valid && (ex_is_jal || ex_is_jalr || (ex_is_branch && br_taken));
+  prefix_adder #(.W(32)) u_tgt (.a(ex_pc), .b(ex_imm), .cin(1'b0), .sum(ex_pc_imm), .cout(unused_tgt_cout));
+  assign ex_target = ex_is_jalr ? {alu_y[31:1], 1'b0} : ex_pc_imm;
+  assign ex_jump   = ex_valid && (ex_is_jal || ex_is_jalr || (ex_is_branch && br_taken));
 
   // Misalignment checks (address computed here, so traps are known before MEM).
   logic [3:0]  unused_strb;
@@ -207,13 +234,20 @@ module core_pipe
   always_comb begin
     if (!ex_valid)                                              ex_trap = TRAP_NONE;
     else if (ex_illegal)                                        ex_trap = TRAP_ILLEGAL;
-    else if (((ex_mem_re || ex_mem_we) && mis_mem) || (jump && ex_target[1:0] != 2'b00))
+    else if (((ex_mem_re || ex_mem_we) && mis_mem) || (ex_jump && ex_target[1:0] != 2'b00))
                                                                 ex_trap = TRAP_MISALIGNED;
     else if (ex_is_halt)                                        ex_trap = TRAP_ECALL;
     else                                                        ex_trap = TRAP_NONE;
   end
   assign ex_trap_any = (ex_trap != TRAP_NONE);
-  assign ex_redirect = jump && !ex_trap_any;
+
+  // Check the prediction made in IF: wrong direction, or taken to the wrong target. (Predicted
+  // taken on an instruction that isn't a branch -- BTB aliasing -- is a wrong direction too.)
+  logic mispredict;
+  assign mispredict     = (ex_jump != ex_pred_taken) || (ex_jump && ex_pred_target != ex_target);
+  assign ex_redirect    = ex_valid && !ex_trap_any && mispredict;
+  assign ex_redirect_pc = ex_jump ? ex_target : ex_pc4;
+  assign bp_upd         = ex_valid && !ex_trap_any && (ex_is_branch || ex_is_jal || ex_is_jalr);
 
   // Once a trap reaches EX nothing younger may execute.
   always_ff @(posedge clk) begin
@@ -243,6 +277,8 @@ module core_pipe
       mem_alu    <= alu_y;
       mem_store  <= rs2_fwd;
       mem_pc4    <= ex_pc4;
+      // The value MEM forwards back to EX, selected here so the forwarding path starts at a flop.
+      mem_fwd_val <= (ex_wb_sel == WB_PC4) ? ex_pc4 : alu_y;
       mem_wb_sel <= ex_wb_sel;
       mem_funct3 <= ex_mem_funct3;
       mem_trap   <= ex_trap;
@@ -252,7 +288,6 @@ module core_pipe
       mem_mem_we <= ex_valid && ex_mem_we && !ex_trap_any;
     end
   end
-  assign mem_fwd_val = (mem_wb_sel == WB_PC4) ? mem_pc4 : mem_alu;
 
   // =========================================================================================
   // MEM
@@ -332,12 +367,12 @@ module core_pipe
   // =========================================================================================
   hazard_unit u_haz (
     .id_valid, .id_rs1(d_rs1), .id_rs2(d_rs2), .id_uses_rs1(d_uses_rs1), .id_uses_rs2(d_uses_rs2),
-    .ex_valid, .ex_rs1, .ex_rs2, .ex_rd, .ex_mem_re, .ex_redirect, .ex_trap(ex_trap_any),
+    .ex_valid, .ex_rd, .ex_reg_we, .ex_mem_re, .ex_redirect, .ex_trap(ex_trap_any),
     .mem_valid, .mem_rd, .mem_reg_we,
-    .wb_valid, .wb_rd, .wb_reg_we,
-    .fwd_a, .fwd_b, .stall, .bubble_ex, .flush_id, .load_use
+    .fwd_a(fwd_a_id), .fwd_b(fwd_b_id), .stall, .bubble_ex, .flush_id, .load_use
   );
 
-  assign perf_stall = stall;
-  assign perf_flush = ex_redirect;
+  assign perf_stall  = stall;
+  assign perf_flush  = ex_redirect;
+  assign perf_branch = bp_upd;
 endmodule

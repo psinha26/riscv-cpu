@@ -155,28 +155,28 @@ int main(int argc, char** argv) {
     // ---- hazard unit: exhaustive over small register indices, against the textbook rules ----
     std::uniform_int_distribution<int> reg(0, 3);  // few registers => many collisions
     for (int i = 0; i < 200000; ++i) {
-        const int id_rs1 = reg(rng), id_rs2 = reg(rng), ex_rs1 = reg(rng), ex_rs2 = reg(rng);
-        const int ex_rd = reg(rng), mem_rd = reg(rng), wb_rd = reg(rng);
+        const int id_rs1 = reg(rng), id_rs2 = reg(rng), ex_rd = reg(rng), mem_rd = reg(rng);
         const bool id_v = rng() & 1, u1 = rng() & 1, u2 = rng() & 1, ex_v = rng() & 1, ex_ld = rng() & 1;
-        const bool redirect = (rng() & 7) == 0, trap = (rng() & 15) == 0;
-        const bool mem_v = rng() & 1, mem_we = rng() & 1, wb_v = rng() & 1, wb_we = rng() & 1;
+        const bool ex_we = rng() & 1, redirect = (rng() & 7) == 0, trap = (rng() & 15) == 0;
+        const bool mem_v = rng() & 1, mem_we = rng() & 1;
         top.hz_id_valid = id_v; top.hz_id_rs1 = id_rs1; top.hz_id_rs2 = id_rs2;
         top.hz_id_uses_rs1 = u1; top.hz_id_uses_rs2 = u2;
-        top.hz_ex_valid = ex_v; top.hz_ex_rs1 = ex_rs1; top.hz_ex_rs2 = ex_rs2; top.hz_ex_rd = ex_rd;
+        top.hz_ex_valid = ex_v; top.hz_ex_rd = ex_rd; top.hz_ex_reg_we = ex_we;
         top.hz_ex_mem_re = ex_ld; top.hz_ex_redirect = redirect; top.hz_ex_trap = trap;
         top.hz_mem_valid = mem_v; top.hz_mem_rd = mem_rd; top.hz_mem_reg_we = mem_we;
-        top.hz_wb_valid = wb_v; top.hz_wb_rd = wb_rd; top.hz_wb_reg_we = wb_we;
         top.eval();
 
+        // Forwarding is decided for the ID instruction: the EX instruction will be in MEM when it
+        // reaches EX (select 1), the MEM instruction will be in WB (select 2).
         auto fwd = [&](int rs) {
-            if (mem_v && mem_we && mem_rd != 0 && mem_rd == rs) return 1;
-            if (wb_v && wb_we && wb_rd != 0 && wb_rd == rs) return 2;
+            if (ex_v && ex_we && ex_rd != 0 && ex_rd == rs) return 1;
+            if (mem_v && mem_we && mem_rd != 0 && mem_rd == rs) return 2;
             return 0;
         };
         const bool lu = ex_v && ex_ld && ex_rd != 0 && id_v && ((u1 && id_rs1 == ex_rd) || (u2 && id_rs2 == ex_rd));
         const bool kill = redirect || trap;
-        expect(top.hz_fwd_a == fwd(ex_rs1), "hazard fwd_a");
-        expect(top.hz_fwd_b == fwd(ex_rs2), "hazard fwd_b");
+        expect(top.hz_fwd_a == fwd(id_rs1), "hazard fwd_a");
+        expect(top.hz_fwd_b == fwd(id_rs2), "hazard fwd_b");
         expect(bool(top.hz_load_use) == lu, "hazard load_use");
         expect(bool(top.hz_stall) == (lu && !kill), "hazard stall");
         expect(bool(top.hz_bubble_ex) == (kill || lu), "hazard bubble_ex");

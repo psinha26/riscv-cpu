@@ -8,13 +8,15 @@
 //   0x2000_0020  cycle counter, low / high word
 //   0x2000_0028  instructions-retired counter, low / high word
 //   0x2000_0030  cycles lost to load-use stalls
-//   0x2000_0034  branch/jump flushes (each costs 2 cycles)
+//   0x2000_0034  branch/jump flushes (each costs 2 cycles): mispredictions
+//   0x2000_0038  branches and jumps executed
 //
-// PIPELINED selects the 5-stage core or the single-cycle core.
+// PIPELINED selects the 5-stage core or the single-cycle core; BP_ENTRIES sizes the pipelined
+// core's branch target buffer (0 = static predict-not-taken).
 module soc
-  import rv32i_pkg::*;
 #(
-  parameter int PIPELINED = 1,
+  parameter int PIPELINED  = 1,
+  parameter int BP_ENTRIES = 0,
   parameter int IMEM_KB   = 64,
   parameter int DMEM_KB   = 64
 ) (
@@ -40,8 +42,11 @@ module soc
   output logic [63:0] cycles,
   output logic [63:0] instret,
   output logic [31:0] stall_cycles,
-  output logic [31:0] flushes
+  output logic [31:0] flushes,
+  output logic [31:0] branches
 );
+  `include "rv32i_defs.svh"
+
   localparam int IMEM_WORDS = IMEM_KB * 256;
   localparam int DMEM_WORDS = DMEM_KB * 256;
   localparam int IW = $clog2(IMEM_WORDS);
@@ -49,10 +54,10 @@ module soc
 
   logic [31:0] imem_addr, imem_rdata, dmem_addr, dmem_wdata, dmem_rdata;
   logic [3:0]  dmem_wstrb;
-  logic        dmem_re, perf_stall, perf_flush;
+  logic        dmem_re, perf_stall, perf_flush, perf_branch;
 
   if (PIPELINED != 0) begin : g_core
-    core_pipe u_core (.*);
+    core_pipe #(.BP_ENTRIES(BP_ENTRIES)) u_core (.*);
   end else begin : g_core
     core_single u_core (.*);
   end
@@ -95,6 +100,7 @@ module soc
       8'h2c:        mmio_rdata = instret[63:32];
       8'h30:        mmio_rdata = stall_cycles;
       8'h34:        mmio_rdata = flushes;
+      8'h38:        mmio_rdata = branches;
       default:      mmio_rdata = 32'b0;
     endcase
   end
@@ -112,12 +118,14 @@ module soc
       instret      <= 64'b0;
       stall_cycles <= 32'b0;
       flushes      <= 32'b0;
+      branches     <= 32'b0;
     end else begin
       if (in_mmio && dmem_addr[7:0] == 8'h10 && dmem_wstrb[0]) leds <= dmem_wdata[7:0];
       if (!halted) cycles <= cycles + 64'd1;
       if (rvfi_valid) instret <= instret + 64'd1;
       if (perf_stall) stall_cycles <= stall_cycles + 32'd1;
       if (perf_flush) flushes <= flushes + 32'd1;
+      if (perf_branch) branches <= branches + 32'd1;
     end
   end
 endmodule

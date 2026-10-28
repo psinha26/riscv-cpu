@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
     if (!opt.quiet) std::fflush(stdout);
 
     const uint64_t cycles = top->cycles, instret = top->instret;
-    const uint32_t stalls = top->stall_cycles, flushes = top->flushes;
+    const uint32_t stalls = top->stall_cycles, flushes = top->flushes, branches = top->branches;
     if (status == 0) {
         if (!done) {
             std::fprintf(stderr, "\nTIMEOUT after %llu cycles\n", (unsigned long long)cycle);
@@ -212,15 +212,17 @@ int main(int argc, char** argv) {
     if (!opt.quiet || status != 0)
         std::fprintf(stderr,
                      "[%s] cycles %llu | instret %llu | CPI %.3f | load-use stall cycles %u (%.1f%%) | "
-                     "flushes %u (%u cycles, %.1f%%)%s\n",
+                     "flushes %u (%u cycles, %.1f%%) | branch/jump prediction %.1f%% of %u%s\n",
                      status == 0 ? "ok" : "FAILED", (unsigned long long)cycles, (unsigned long long)instret,
                      instret ? double(cycles) / instret : 0.0, stalls, cycles ? 100.0 * stalls / cycles : 0.0, flushes,
                      2 * flushes, cycles ? 200.0 * flushes / cycles : 0.0,
+                     branches ? 100.0 * (branches - flushes) / branches : 0.0, branches,
                      opt.check ? ", golden model matched" : "");
     if (!opt.stats_json.empty()) {
         std::ofstream j(opt.stats_json);
         j << "{\"status\": " << status << ", \"cycles\": " << cycles << ", \"instret\": " << instret
-          << ", \"stall_cycles\": " << stalls << ", \"flushes\": " << flushes << "}\n";
+          << ", \"stall_cycles\": " << stalls << ", \"flushes\": " << flushes
+          << ", \"branches\": " << branches << "}\n";
     }
     if (vcd) vcd->close();
     top->final();
