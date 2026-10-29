@@ -1,0 +1,130 @@
+{
+  "1. baseline (ripple adders)": {
+    "core_pipe": {
+      "delays_ps": [
+        10339.51,
+        10339.51,
+        10339.51,
+        10339.51
+      ],
+      "median_ps": 10339.51,
+      "best_ps": 10339.51,
+      "area_um2": 78799.3248,
+      "cells": 7594,
+      "flops": 1537,
+      "start": "\\g_core.u_core.id_insn [0]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$23207"
+    },
+    "core_single": {
+      "delays_ps": [
+        11415.71,
+        11415.71,
+        11415.71,
+        11415.71
+      ],
+      "median_ps": 11415.71,
+      "best_ps": 11415.71,
+      "area_um2": 63544.6944,
+      "cells": 7484,
+      "flops": 1025,
+      "start": "\\ikey [2]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$19010"
+    }
+  },
+  "2. + prefix adders": {
+    "core_pipe": {
+      "delays_ps": [
+        6366.71,
+        6366.71,
+        6366.71,
+        7804.39
+      ],
+      "median_ps": 6366.71,
+      "best_ps": 6366.71,
+      "area_um2": 79810.2944,
+      "cells": 7910,
+      "flops": 1537,
+      "start": "\\g_core.u_core.mem_rd [3]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$22186"
+    },
+    "core_single": {
+      "delays_ps": [
+        7420.55,
+        7420.55,
+        7420.55,
+        7990.61
+      ],
+      "median_ps": 7420.55,
+      "best_ps": 7420.55,
+      "area_um2": 60887.1456,
+      "cells": 8713,
+      "flops": 1025,
+      "start": "\\g_core.u_core.pc [20]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$20333"
+    }
+  },
+  "3. + forwarding decided in ID": {
+    "core_pipe": {
+      "delays_ps": [
+        6357.26,
+        6357.26,
+        6357.26,
+        7722.84
+      ],
+      "median_ps": 6357.26,
+      "best_ps": 6357.26,
+      "area_um2": 79492.4896,
+      "cells": 7829,
+      "flops": 1531,
+      "start": "\\g_core.u_core.mem_wb_sel [1]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$22423"
+    },
+    "core_single": {
+      "delays_ps": [
+        7420.55,
+        7420.55,
+        7420.55,
+        7990.61
+      ],
+      "median_ps": 7420.55,
+      "best_ps": 7420.55,
+      "area_um2": 60887.1456,
+      "cells": 8713,
+      "flops": 1025,
+      "start": "\\g_core.u_core.pc [20]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$20309"
+    }
+  },
+  "4. + registered MEM forward": {
+    "core_pipe": {
+      "delays_ps": [
+        6097.51,
+        6097.51,
+        6097.51,
+        7516.79
+      ],
+      "median_ps": 6097.51,
+      "best_ps": 6097.51,
+      "area_um2": 80442.1504,
+      "cells": 8027,
+      "flops": 1563,
+      "start": "\\g_core.u_core.ex_fwd_b [0]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$23423"
+    },
+    "core_single": {
+      "delays_ps": [
+        7420.55,
+        7420.55,
+        7420.55,
+        7990.61
+      ],
+      "median_ps": 7420.55,
+      "best_ps": 7420.55,
+      "area_um2": 60887.1456,
+      "cells": 8713,
+      "flops": 1025,
+      "start": "\\g_core.u_core.pc [20]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$20309"
+    }
+  }
+}

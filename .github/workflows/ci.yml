@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true   # riscv-tests and CoreMark
+      - name: Install Verilator and the RISC-V toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator gcc-riscv64-unknown-elf
+      - name: Build simulators
+        run: make -j sims
+      - name: RTL unit tests (ALU, imm gen, branch unit, register file, hazard unit)
+        run: make unit
+      - name: rv32ui compliance + directed hazard tests on all three cores (golden-model checked)
+        run: make test
+      - name: Random instruction tests (lockstep against the golden model)
+        run: python3 scripts/random_test.py --count 300
+      - name: Benchmarks (self-verifying C programs + CoreMark)
+        run: python3 scripts/bench.py
+      - name: Mutation testing (every injected bug must be caught)
+        run: python3 scripts/mutation_test.py --suite all

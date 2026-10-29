@@ -23,7 +23,8 @@ VERILATOR_FLAGS := --cc --exe --build -j 0 -O3 --x-assign fast --x-initial fast 
 .PRECIOUS: $(BUILD)/%.elf $(BUILD)/tests/%.elf $(BUILD)/hazards/%.elf $(BUILD)/programs/%.elf
 all: sims
 # Three simulators: single-cycle, pipelined with static not-taken prediction, pipelined + BTB.
-BP_ENTRIES ?= 64
+BP_ENTRIES ?= 16
+BP_JALR    ?= 0
 sims: $(BUILD)/pipe/Vsoc $(BUILD)/single/Vsoc $(BUILD)/pipe_bp/Vsoc $(BUILD)/rv32sim
 
 # Standalone golden model (also validated on its own against the riscv-tests).
@@ -37,7 +38,7 @@ $(BUILD)/pipe/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
 
 $(BUILD)/pipe_bp/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
 	@mkdir -p $(BUILD)/pipe_bp
-	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=1 -GBP_ENTRIES=$(BP_ENTRIES) --Mdir $(BUILD)/pipe_bp $(RTL) $(abspath $(TB)) >/dev/null
+	$(VERILATOR) $(VERILATOR_FLAGS) -GPIPELINED=1 -GBP_ENTRIES=$(BP_ENTRIES) -GBP_JALR=$(BP_JALR) --Mdir $(BUILD)/pipe_bp $(RTL) $(abspath $(TB)) >/dev/null
 
 $(BUILD)/single/Vsoc: $(RTL) rtl/rv32i_defs.svh $(TB)
 	@mkdir -p $(BUILD)/single
@@ -86,7 +87,7 @@ $(BUILD)/programs/%.elf: sw/programs/%.c $(SW_COMMON) sw/common/lib.h sw/common/
 	$(CC) $(CFLAGS_SW) $(SW_COMMON) $< -o $@ -lgcc
 
 # CoreMark: upstream sources untouched (third_party/coremark), port in sw/coremark.
-CM_ITERATIONS ?= 10
+CM_ITERATIONS ?= 20
 CM_SRC := $(addprefix third_party/coremark/,core_list_join.c core_main.c core_matrix.c core_state.c core_util.c) \
           sw/coremark/core_portme.c
 $(BUILD)/programs/coremark.elf: $(CM_SRC) sw/coremark/core_portme.h $(SW_COMMON) sw/common/lib.h sw/common/link.ld
@@ -95,7 +96,7 @@ $(BUILD)/programs/coremark.elf: $(CM_SRC) sw/coremark/core_portme.h $(SW_COMMON)
 	  -DCOMPILER_FLAGS='"-O2 -march=rv32i -mabi=ilp32"' $(SW_COMMON) $(CM_SRC) -o $@ -lgcc
 
 run: $(BUILD)/$(CORE)/Vsoc $(BUILD)/programs/$(PROG).imem.hex
-	$(BUILD)/$(CORE)/Vsoc --imem $(BUILD)/programs/$(PROG).imem.hex --dmem $(BUILD)/programs/$(PROG).dmem.hex
+	@$(BUILD)/$(CORE)/Vsoc --imem $(BUILD)/programs/$(PROG).imem.hex --dmem $(BUILD)/programs/$(PROG).dmem.hex --max-cycles 400000000
 
 UNIT_RTL := rtl/prefix_adder.sv rtl/branch_predictor.sv rtl/alu.sv rtl/imm_gen.sv rtl/branch_unit.sv rtl/regfile.sv rtl/hazard_unit.sv \
             tb/unit/unit_top.sv

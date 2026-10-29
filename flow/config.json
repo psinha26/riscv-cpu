@@ -1,0 +1,20 @@
+{
+  "DESIGN_NAME": "chip_top",
+  "VERILOG_FILES": [
+    "dir::../rtl/prefix_adder.sv",
+    "dir::../rtl/branch_predictor.sv",
+    "dir::../rtl/alu.sv",
+    "dir::../rtl/imm_gen.sv",
+    "dir::../rtl/branch_unit.sv",
+    "dir::../rtl/regfile.sv",
+    "dir::../rtl/lsu.sv",
+    "dir::../rtl/decoder.sv",
+    "dir::../rtl/hazard_unit.sv",
+    "dir::../rtl/core_pipe.sv",
+    "dir::../rtl/synth/chip_top.sv"
+  ],
+  "VERILOG_INCLUDE_DIRS": ["dir::../rtl"],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 10,
+  "FP_CORE_UTIL": 40
+}

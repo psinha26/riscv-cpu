@@ -8,7 +8,8 @@
 // memory accesses in series per cycle, the pipeline has one per stage).
 module timing_wrap #(
   parameter int PIPELINED  = 1,
-  parameter int BP_ENTRIES = 0
+  parameter int BP_ENTRIES = 0,
+  parameter int BP_JALR    = 1
 ) (
   input  logic        clk,
   input  logic        rst,
@@ -29,7 +30,7 @@ module timing_wrap #(
   assign dmem_rdata = dmem_addr ^ dkey;
 
   if (PIPELINED != 0) begin : g_core
-    core_pipe #(.BP_ENTRIES(BP_ENTRIES)) u_core (.*);
+    core_pipe #(.BP_ENTRIES(BP_ENTRIES), .BP_JALR(BP_JALR != 0)) u_core (.*);
   end else begin : g_core
     core_single u_core (.*);
   end

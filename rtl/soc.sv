@@ -17,6 +17,7 @@ module soc
 #(
   parameter int PIPELINED  = 1,
   parameter int BP_ENTRIES = 0,
+  parameter int BP_JALR    = 1,
   parameter int IMEM_KB   = 64,
   parameter int DMEM_KB   = 64
 ) (
@@ -57,7 +58,7 @@ module soc
   logic        dmem_re, perf_stall, perf_flush, perf_branch;
 
   if (PIPELINED != 0) begin : g_core
-    core_pipe #(.BP_ENTRIES(BP_ENTRIES)) u_core (.*);
+    core_pipe #(.BP_ENTRIES(BP_ENTRIES), .BP_JALR(BP_JALR != 0)) u_core (.*);
   end else begin : g_core
     core_single u_core (.*);
   end

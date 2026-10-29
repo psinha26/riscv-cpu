@@ -23,17 +23,17 @@ RTL = ["prefix_adder.sv", "branch_predictor.sv", "alu.sv", "imm_gen.sv", "branch
 DONT_USE = ["*probe*", "*lpflow*", "*clkdly*", "*dlygate*", "*dlymetal*", "*_1"]
 
 
-def synth(top: str, lib: str, period_ps: int, defines=()):
+def synth(top: str, lib: str, period_ps: int, defines=(), bp_entries=None, bp_jalr=1):
     # core_pipe / core_single are timed inside timing_wrap so paths through memory are closed.
     top_mod = "timing_wrap"
     params = (f"-chparam PIPELINED {0 if top == 'core_single' else 1} "
-              f"-chparam BP_ENTRIES {64 if top == 'core_pipe_bp' else 0}")
+              f"-chparam BP_ENTRIES {bp_entries if bp_entries is not None else (16 if top == 'core_pipe_bp' else 0)} -chparam BP_JALR {bp_jalr if top != 'core_pipe_bp' else 0}")
     files = " ".join(str(ROOT / "rtl" / f) for f in RTL)
     # (Yosys 0.33 has no -dont_use for dfflibmap/abc; the real flow excludes these cells itself.)
     script = f"""
 read_verilog -sv -I{ROOT / 'rtl'} {' '.join('-D' + d for d in defines)} {files}
 hierarchy -check -top {top_mod} {params}
-synth -flatten -top {top_mod}
+synth -flatten -nofsm -top {top_mod}
 dfflibmap -liberty {lib}
 abc -D {period_ps} -liberty {lib} -script "+strash;&get,-n;&fraig,-x;&put;scorr;dc2;strash;&get,-n;&dch,-f;&nf,-D,{period_ps};&put;buffer,-p;upsize,-D,{period_ps};dnsize,-D,{period_ps};stime,-p"
 opt_clean -purge
@@ -86,7 +86,7 @@ def main():
     if a.json:
         p = Path(a.json)
         data = json.loads(p.read_text()) if p.exists() else {}
-        data[a.label] = results
+        data.setdefault(a.label, {}).update(results)
         p.write_text(json.dumps(data, indent=2))
 
 

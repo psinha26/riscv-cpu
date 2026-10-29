@@ -11,8 +11,8 @@
 //   whatever is in EX now will be in MEM next cycle, and whatever is in MEM will be in WB. The
 //   core registers fwd_a/fwd_b into ID/EX, so EX only sees a ready-made mux select. This takes
 //   the register-number comparators off the EX critical path (forwarding mux -> ALU/compare ->
-//   redirect), which was worth ~X% of clock speed (see docs/timing.md). If the ID instruction
-//   stalls, it is simply re-evaluated next cycle.
+//   redirect); see docs/results/timing_ladder.json. If the ID instruction stalls, it is simply
+//   re-evaluated next cycle.
 //
 // Load-use stall
 //   A load's data only exists at the end of MEM, too late for an instruction directly behind
@@ -21,9 +21,11 @@
 //   its data is forwarded from MEM/WB.
 //
 // Control hazards
-//   Branches and jumps are predicted not-taken and resolved in EX. On a taken branch, JAL or
-//   JALR the two younger instructions (in IF and ID) are flushed. A trap (ECALL, EBREAK,
-//   illegal, misaligned) in EX also flushes everything younger and stops fetching.
+//   Branches and jumps are resolved in EX and checked against the prediction made in IF (by
+//   the BTB, or "not taken" when there is none). On a misprediction the two younger
+//   instructions (in IF and ID) are flushed and fetch restarts at the right PC. A trap
+//   (ECALL, EBREAK, illegal, misaligned) in EX also flushes everything younger and stops
+//   fetching. ex_redirect is the misprediction signal.
 module hazard_unit (
   // instruction in ID
   input  logic       id_valid,
@@ -36,7 +38,7 @@ module hazard_unit (
   input  logic [4:0] ex_rd,
   input  logic       ex_reg_we,
   input  logic       ex_mem_re,
-  input  logic       ex_redirect,   // taken branch / jump resolved this cycle
+  input  logic       ex_redirect,   // branch/jump mispredicted: fetch restarts this cycle
   input  logic       ex_trap,       // trapping instruction in EX
   // instruction in MEM (EX/MEM register)
   input  logic       mem_valid,

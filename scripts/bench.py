@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROGRAMS = ["coremark", "sort", "matmul", "crc32"]
-CORES = [("single", "single-cycle"), ("pipe", "5-stage, predict not-taken"), ("pipe_bp", "5-stage + 64-entry BTB")]
+CORES = [("single", "single-cycle"), ("pipe", "5-stage, predict not-taken"), ("pipe_bp", "5-stage + 16-entry BTB")]
 SYNTH_TOP = {"single": "core_single", "pipe": "core_pipe", "pipe_bp": "core_pipe_bp"}
 
 

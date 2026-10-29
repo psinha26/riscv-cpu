@@ -20,6 +20,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # (name, file, regex, replacement)
+# Only functional bugs belong here. Predictor bugs that merely mispredict more often (e.g. no
+# tag check) are performance bugs: the core detects every misprediction in EX and recovers, so
+# correctly no test fails. Those show up in the benchmark CPI instead.
 MUTATIONS = [
     ("no EX/MEM -> EX forwarding", "hazard_unit.sv", r"fwd_sel = 2'd1;", "fwd_sel = 2'd0;"),
     ("no MEM/WB -> EX forwarding", "hazard_unit.sv", r"fwd_sel = 2'd2;", "fwd_sel = 2'd0;"),
@@ -42,15 +45,17 @@ MUTATIONS = [
     ("LB zero-extends", "lsu.sv", r"\{\{24\{shifted\[7\]\}\}, shifted\[7:0\]\};    // LB", "{24'b0, shifted[7:0]};    // LB"),
     ("SH writes the wrong lanes", "lsu.sv", r"wstrb = off\[1\] \? 4'b1100 : 4'b0011;", "wstrb = 4'b0011;"),
     ("B-immediate bit 11 dropped", "imm_gen.sv", r"insn\[31\], insn\[7\], insn\[30:25\]", "insn[31], 1'b0, insn[30:25]"),
+    ("predicted target never checked (BTB)", "core_pipe.sv", r"\(ex_jump && \(ex_is_jalr \? jalr_wrong : ex_tgt_mismatch\)\)",
+     "1'b0"),
     ("BGEU acts as BGE", "branch_unit.sv", r"3'b111:  taken = !lt_u;", "3'b111:  taken = !lt_s;"),
 ]
 
 
-def build(rtl_dir: Path, out: Path):
+def build(rtl_dir: Path, out: Path, bp=0):
     files = [rtl_dir / f for f in ["prefix_adder.sv", "branch_predictor.sv", "alu.sv", "imm_gen.sv", "branch_unit.sv", "regfile.sv", "lsu.sv",
                                     "decoder.sv", "hazard_unit.sv", "core_single.sv", "core_pipe.sv", "soc.sv"]]
     cmd = ["verilator", "--cc", "--exe", "--build", "-j", "0", "-O1", "--x-assign", "fast", "--x-initial", "fast",
-           "--trace", "-Wno-fatal", "-Wno-lint", "-Wno-style", f"-I{rtl_dir}", "--top-module", "soc", "-GPIPELINED=1",
+           "--trace", "-Wno-fatal", "-Wno-lint", "-Wno-style", f"-I{rtl_dir}", "--top-module", "soc", "-GPIPELINED=1", f"-GBP_ENTRIES={bp}",
            "-CFLAGS", f"-I{ROOT / 'sim'}", "--Mdir", str(out), *map(str, files),
            str(ROOT / "tb/tb_soc.cpp"), str(ROOT / "sim/iss.cpp")]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -89,7 +94,7 @@ def main():
     images = tests(a.suite)
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
-        base_sim = build(ROOT / "rtl", td / "base")
+        base_sim = build(ROOT / "rtl", td / "base", bp=16)
         base_fail = run_all(base_sim, images)
         if base_fail:
             sys.exit(f"unmutated design fails: {base_fail}")
@@ -105,7 +110,7 @@ def main():
             if n == 0:
                 sys.exit(f"mutation '{name}' did not apply (pattern not found in {fname})")
             (rtl / fname).write_text(new)
-            sim = build(rtl, td / "mut")
+            sim = build(rtl, td / "mut", bp=16)  # 16-entry BTB, so predictor bugs can show
             failed = run_all(sim, images)
             survivors += not failed
             shown = ", ".join(failed[:6]) + (" ..." if len(failed) > 6 else "")

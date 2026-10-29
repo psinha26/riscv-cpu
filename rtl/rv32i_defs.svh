@@ -2,6 +2,7 @@
 // (`include "rv32i_defs.svh") rather than imported from a package, so the RTL also parses
 // in synthesis tools with limited SystemVerilog package support.
 // Major opcodes (insn[6:0]).
+/* verilator lint_off UNUSEDPARAM */  // each module uses only some of these
 localparam logic [6:0] OP_LUI    = 7'b0110111;
 localparam logic [6:0] OP_AUIPC  = 7'b0010111;
 localparam logic [6:0] OP_JAL    = 7'b1101111;
@@ -50,3 +51,4 @@ localparam logic [1:0] TRAP_ILLEGAL    = 2'd2;
 localparam logic [1:0] TRAP_MISALIGNED = 2'd3;  // misaligned load/store or jump target
 
 localparam logic [31:0] NOP = 32'h0000_0013;  // addi x0, x0, 0
+/* verilator lint_on UNUSEDPARAM */

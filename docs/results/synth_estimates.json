@@ -1,92 +1,28 @@
 {
-  "1-baseline": {
-    "core_pipe": {
-      "start": "\\g_core.u_core.ex_pc [1]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$23868",
-      "cells": 7786,
-      "area_um2": 78291.3376,
-      "flops": 1511,
-      "abc_delay_ps": 10383.75
-    },
-    "core_single": {
-      "start": "\\g_core.u_core.pc [15]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$19490",
-      "cells": 8587,
-      "area_um2": 60673.1904,
-      "flops": 1025,
-      "abc_delay_ps": 13291.6
-    }
-  },
-  "2-prefix-adders": {
-    "core_pipe": {
-      "start": "\\g_core.u_core.wb_rd [3]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$21933",
-      "cells": 7728,
-      "area_um2": 78475.264,
-      "flops": 1511,
-      "abc_delay_ps": 7904.56
-    },
-    "core_single": {
-      "start": "\\g_core.u_core.pc [15]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$20074",
-      "cells": 8688,
-      "area_um2": 60568.0896,
-      "flops": 1025,
-      "abc_delay_ps": 9746.45
-    }
-  },
-  "3-forwarding-decided-in-ID": {
-    "core_pipe": {
-      "start": "\\g_core.u_core.mem_wb_sel [0]",
-      "end": "$abc$15486$auto$fsm_map.cc:170:map_fsm$1900[1]",
-      "cells": 7643,
-      "area_um2": 77968.528,
-      "flops": 1505,
-      "abc_delay_ps": 7271.0
-    }
-  },
-  "4-registered-mem-forward": {
-    "core_pipe": {
-      "start": "\\g_core.u_core.wb_data [1]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$22193",
-      "cells": 7725,
-      "area_um2": 78866.8896,
-      "flops": 1537,
-      "abc_delay_ps": 6516.35
-    },
-    "core_single": {
-      "start": "\\g_core.u_core.pc [15]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$20074",
-      "cells": 8688,
-      "area_um2": 60568.0896,
-      "flops": 1025,
-      "abc_delay_ps": 9746.45
-    }
-  },
-  "5-branch-predictor": {
+  "final": {
     "core_single": {
       "start": "\\g_core.u_core.pc [20]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$20305",
+      "end": "$auto$rtlil.cc:2609:MuxGate$20309",
       "cells": 8713,
-      "area_um2": 60598.1184,
+      "area_um2": 60887.1456,
       "flops": 1025,
-      "abc_delay_ps": 8738.56
+      "abc_delay_ps": 7420.55
     },
     "core_pipe": {
-      "start": "\\g_core.u_core.ex_alu_op [5]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$22921",
-      "cells": 7692,
-      "area_um2": 78836.8608,
-      "flops": 1537,
-      "abc_delay_ps": 8659.86
+      "start": "\\g_core.u_core.ex_fwd_b [0]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$23423",
+      "cells": 8027,
+      "area_um2": 80442.1504,
+      "flops": 1563,
+      "abc_delay_ps": 6097.51
     },
     "core_pipe_bp": {
-      "start": "\\g_core.u_core.ex_fwd_b [2]",
-      "end": "$auto$rtlil.cc:2609:MuxGate$41572",
-      "cells": 18332,
-      "area_um2": 189588.08,
-      "flops": 4293,
-      "abc_delay_ps": 7914.34
+      "start": "\\g_core.u_core.mem_fwd_val [0]",
+      "end": "$auto$rtlil.cc:2609:MuxGate$26717",
+      "cells": 10382,
+      "area_um2": 110768.736,
+      "flops": 2272,
+      "abc_delay_ps": 6186.73
     }
   }
 }

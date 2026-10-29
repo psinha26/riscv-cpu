@@ -13,7 +13,8 @@
 module core_pipe
 #(
   parameter logic [31:0] RESET_PC   = 32'h0000_0000,
-  parameter int          BP_ENTRIES = 0   // branch target buffer size; 0 = static not-taken
+  parameter int          BP_ENTRIES = 0,  // branch target buffer size; 0 = static not-taken
+  parameter bit          BP_JALR    = 1'b1  // also predict JALR targets (returns, indirect calls)
 ) (
   input  logic        clk,
   input  logic        rst,
@@ -65,7 +66,7 @@ module core_pipe
   logic [31:0] ex_pc;
   branch_predictor #(.ENTRIES(BP_ENTRIES)) u_bp (
     .clk, .rst, .if_pc(pc), .pred_taken(if_pred_taken), .pred_target(if_pred_target),
-    .upd_valid(bp_upd), .upd_pc(ex_pc), .upd_taken(ex_jump), .upd_uncond(ex_is_jal || ex_is_jalr),
+    .upd_valid(bp_upd && (BP_JALR || !ex_is_jalr)), .upd_pc(ex_pc), .upd_taken(ex_jump), .upd_uncond(ex_is_jal || ex_is_jalr),
     .upd_target(ex_target)
   );
 
@@ -130,6 +131,18 @@ module core_pipe
   logic [2:0]  ex_mem_funct3;
   logic [1:0]  fwd_a_id, fwd_b_id, ex_fwd_a, ex_fwd_b;  // forwarding selects, decided in ID
 
+  // Branch/JAL target (pc + imm) is computed here in ID, along with whether the predictor's
+  // target was wrong, so neither the adder nor the 32-bit compare sits on the EX critical path.
+  // (JALR's target depends on rs1, so it is still computed and checked in EX.)
+  logic [31:0] d_br_target, ex_br_target;
+  logic        d_tgt_mismatch, ex_tgt_mismatch, unused_tgt_cout;
+  prefix_adder #(.W(32)) u_tgt (.a(id_pc), .b(d_imm), .cin(1'b0), .sum(d_br_target), .cout(unused_tgt_cout));
+  if (BP_ENTRIES > 0) begin : g_tgt_check
+    assign d_tgt_mismatch = id_pred_target != d_br_target;
+  end else begin : g_no_tgt_check
+    assign d_tgt_mismatch = 1'b0;  // never predicted taken, so the target is never checked
+  end
+
   always_ff @(posedge clk) begin
     if (rst || bubble_ex) begin
       ex_valid     <= 1'b0;
@@ -155,6 +168,8 @@ module core_pipe
       ex_fwd_b      <= fwd_b_id;
       ex_pred_taken <= id_pred_taken;
       ex_pred_target <= id_pred_target;
+      ex_br_target  <= d_br_target;
+      ex_tgt_mismatch <= d_tgt_mismatch;
       ex_pc         <= id_pc;
       ex_insn       <= id_insn;
       ex_rs1        <= d_rs1;
@@ -214,11 +229,9 @@ module core_pipe
   logic br_taken;
   branch_unit u_br (.funct3(ex_insn[14:12]), .a(rs1_fwd), .b(rs2_fwd), .taken(br_taken));
 
-  logic [31:0] ex_pc4, ex_pc_imm;
-  logic        unused_tgt_cout;
+  logic [31:0] ex_pc4;
   assign ex_pc4    = ex_pc + 32'd4;
-  prefix_adder #(.W(32)) u_tgt (.a(ex_pc), .b(ex_imm), .cin(1'b0), .sum(ex_pc_imm), .cout(unused_tgt_cout));
-  assign ex_target = ex_is_jalr ? {alu_y[31:1], 1'b0} : ex_pc_imm;
+  assign ex_target = ex_is_jalr ? {alu_y[31:1], 1'b0} : ex_br_target;
   assign ex_jump   = ex_valid && (ex_is_jal || ex_is_jalr || (ex_is_branch && br_taken));
 
   // Misalignment checks (address computed here, so traps are known before MEM).
@@ -244,7 +257,12 @@ module core_pipe
   // Check the prediction made in IF: wrong direction, or taken to the wrong target. (Predicted
   // taken on an instruction that isn't a branch -- BTB aliasing -- is a wrong direction too.)
   logic mispredict;
-  assign mispredict     = (ex_jump != ex_pred_taken) || (ex_jump && ex_pred_target != ex_target);
+  // Without BP_JALR a JALR always redirects (like the static predictor), so its register-
+  // dependent target never needs comparing against a prediction on the EX critical path.
+  logic jalr_wrong;
+  assign jalr_wrong     = BP_JALR ? ex_pred_target != ex_target : 1'b1;
+  assign mispredict     = (ex_jump != ex_pred_taken) ||
+                          (ex_jump && (ex_is_jalr ? jalr_wrong : ex_tgt_mismatch));
   assign ex_redirect    = ex_valid && !ex_trap_any && mispredict;
   assign ex_redirect_pc = ex_jump ? ex_target : ex_pc4;
   assign bp_upd         = ex_valid && !ex_trap_any && (ex_is_branch || ex_is_jal || ex_is_jalr);

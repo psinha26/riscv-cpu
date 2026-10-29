@@ -3,27 +3,27 @@
     "coremark": {
       "single": {
         "status": 0,
-        "cycles": 7504421,
-        "instret": 7504421,
+        "cycles": 14971324,
+        "instret": 14971324,
         "stall_cycles": 0,
         "flushes": 0,
-        "branches": 2296573
+        "branches": 4581826
       },
       "pipe": {
         "status": 0,
-        "cycles": 10753097,
-        "instret": 7507050,
-        "stall_cycles": 203999,
-        "flushes": 1521022,
-        "branches": 2297685
+        "cycles": 21450838,
+        "instret": 14974091,
+        "stall_cycles": 407653,
+        "flushes": 3034545,
+        "branches": 4583006
       },
       "pipe_bp": {
         "status": 0,
-        "cycles": 8799327,
-        "instret": 7506583,
-        "stall_cycles": 204000,
-        "flushes": 544370,
-        "branches": 2297463
+        "cycles": 17843012,
+        "instret": 14973643,
+        "stall_cycles": 407653,
+        "flushes": 1230856,
+        "branches": 4582820
       }
     },
     "sort": {
@@ -45,10 +45,10 @@
       },
       "pipe_bp": {
         "status": 0,
-        "cycles": 320028,
-        "instret": 285394,
+        "cycles": 322933,
+        "instret": 285403,
         "stall_cycles": 32,
-        "flushes": 17299,
+        "flushes": 18747,
         "branches": 65684
       }
     },
@@ -71,11 +71,11 @@
       },
       "pipe_bp": {
         "status": 0,
-        "cycles": 3152853,
-        "instret": 3004955,
+        "cycles": 3212145,
+        "instret": 3004975,
         "stall_cycles": 36,
-        "flushes": 73929,
-        "branches": 998117
+        "flushes": 103565,
+        "branches": 998133
       }
     },
     "crc32": {
@@ -97,17 +97,17 @@
       },
       "pipe_bp": {
         "status": 0,
-        "cycles": 365478,
+        "cycles": 365736,
         "instret": 351561,
         "stall_cycles": 4125,
-        "flushes": 4894,
+        "flushes": 5023,
         "branches": 52541
       }
     }
   },
   "clock_ps": {
-    "single": 8738.56,
-    "pipe": 8659.86,
-    "pipe_bp": 7914.34
+    "single": 7420.55,
+    "pipe": 6097.51,
+    "pipe_bp": 6186.73
   }
 }
